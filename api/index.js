@@ -147,7 +147,14 @@ export default async function handler(req, res) {
 
     const hasBody = req.method !== "GET" && req.method !== "HEAD";
     const abortCtrl = new AbortController();
-    const timeoutRef = setTimeout(() => abortCtrl.abort(new Error("upstream_timeout")), UPSTREAM_TIMEOUT_MS);
+    let hitUpstreamTimeout = false;
+    const timeoutRef = setTimeout(() => {
+      hitUpstreamTimeout = true;
+      // Avoid throwing from timeout callback on runtimes that mishandle abort reasons.
+      try {
+        abortCtrl.abort();
+      } catch {}
+    }, UPSTREAM_TIMEOUT_MS);
     let requestErrorHandler = null;
     let uploadErrorHandler = null;
     let uploadNodeStream = null;
@@ -231,7 +238,7 @@ export default async function handler(req, res) {
     }
   } catch (err) {
     const durationMs = Date.now() - startedAt;
-    if (isUpstreamTimeoutError(err)) {
+    if (hitUpstreamTimeout || isUpstreamTimeoutError(err)) {
       emitRateLimitedError("timeout", "relay timeout", {
         requestId,
         method: req.method,
@@ -312,6 +319,7 @@ function applyDnsPreference() {
 function isUpstreamTimeoutError(err) {
   if (!err) return false;
   if (err?.name === "AbortError") return true;
+  if (err?.code === "ABORT_ERR") return true;
   if (err?.message === "upstream_timeout") return true;
   if (err?.cause?.message === "upstream_timeout") return true;
   if (typeof err === "string" && err === "upstream_timeout") return true;
