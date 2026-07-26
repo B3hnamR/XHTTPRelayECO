@@ -12,3 +12,8 @@ public/
 build-profile-*.txt
 env-report-*.txt
 billing-usage-*.txt
+
+# Local manager state and generated deployments
+.qodo/
+logs/
+projects/
